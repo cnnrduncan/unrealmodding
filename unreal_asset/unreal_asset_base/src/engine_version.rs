@@ -84,6 +84,8 @@ pub enum EngineVersion {
     VER_UE5_1,
     /// 5.2
     VER_UE5_2,
+    /// 5.3
+    VER_UE5_3,
 
     /// The newest specified version of the Unreal Engine.
     VER_UE4_AUTOMATIC_VERSION,
@@ -217,6 +219,10 @@ lazy_static! {
             ObjectVersion::VER_UE4_CORRECT_LICENSEE_FLAG,
             EngineVersion::VER_UE5_2
         ),
+        (
+            ObjectVersion::VER_UE4_CORRECT_LICENSEE_FLAG,
+            EngineVersion::VER_UE5_3
+        ),
     ]);
     static ref OBJECT_VERSION_TO_ENGINE_VERSION_UE5: Vec<(ObjectVersionUE5, EngineVersion)> =
         Vec::from([
@@ -231,6 +237,10 @@ lazy_static! {
             (
                 ObjectVersionUE5::AUTOMATIC_VERSION,
                 EngineVersion::VER_UE5_2
+            ),
+            (
+                ObjectVersionUE5::AUTOMATIC_VERSION,
+                EngineVersion::VER_UE5_3
             )
         ]);
 }
