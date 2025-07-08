@@ -135,20 +135,41 @@ impl UnversionedHeader {
 
         let mut fragments = Vec::new();
 
-        let mut first_num = 0;
-        let mut zero_mask_num = 0u16;
-        let mut unmasked_num = 0u16;
+        let mut first_num: u16 = 0; // Use u16 for safety
+        let mut zero_mask_num: u16 = 0;
+        let mut unmasked_num: u16 = 0;
 
         loop {
             let mut fragment = UnversionedHeaderFragment::read(asset)?;
-            fragment.first_num = first_num + fragment.skip_num;
-            first_num += fragment.skip_num + fragment.value_num;
+
+            // Use checked_add to prevent overflow
+            fragment.first_num = match first_num.checked_add(fragment.skip_num as u16) {
+                Some(val) => val as u8, // Or use u16 if you update the struct
+                None => return Err(Error::Other("UnversionedHeader: first_num overflow".into())),
+            };
+
+            // Prevent overflow in first_num update
+            first_num = match first_num
+                .checked_add(fragment.skip_num as u16)
+                .and_then(|v| v.checked_add(fragment.value_num as u16))
+            {
+                Some(val) => val,
+                None => return Err(Error::Other("UnversionedHeader: first_num update overflow".into())),
+            };
 
             fragments.push(fragment);
 
             match fragment.has_zeros {
-                true => zero_mask_num += fragment.value_num as u16,
-                false => unmasked_num += fragment.value_num as u16,
+                true => {
+                    zero_mask_num = zero_mask_num
+                        .checked_add(fragment.value_num as u16)
+                        .ok_or_else(|| Error::Other("UnversionedHeader: zero_mask_num overflow".into()))?
+                }
+                false => {
+                    unmasked_num = unmasked_num
+                        .checked_add(fragment.value_num as u16)
+                        .ok_or_else(|| Error::Other("UnversionedHeader: unmasked_num overflow".into()))?
+                }
             };
 
             if fragment.is_last {
