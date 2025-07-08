@@ -158,6 +158,13 @@ pub enum UsmapPropertyData {
 }
 
 impl UsmapPropertyData {
+    /// Public constructor for shallow property data
+    pub fn shallow(property_type: EPropertyType) -> Self {
+        UsmapPropertyData::UsmapShallowPropertyData(
+            UsmapShallowPropertyData { property_type }
+        )
+    }
+
     /// Read an `UsmapPropertyData` from an asset
     pub fn new<R: ArchiveReader<PackageIndex>>(
         asset: &mut UsmapReader<'_, '_, R>,
