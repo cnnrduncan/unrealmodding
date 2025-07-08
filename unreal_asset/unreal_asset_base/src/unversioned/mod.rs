@@ -24,7 +24,8 @@ pub mod usmap_reader;
 pub mod usmap_writer;
 
 pub use self::ancestry::Ancestry;
-use self::properties::UsmapProperty;
+pub use self::properties::UsmapProperty;
+pub use self::properties::UsmapPropertyData;
 use self::usmap_reader::UsmapReader;
 
 /// Usmap file version
