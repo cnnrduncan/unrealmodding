@@ -19,7 +19,7 @@ use crate::{
     types::{FName, PackageIndex},
 };
 
-use super::Usmap;
+use super::{Usmap, EUsmapVersion};
 
 /// Usmap file reader
 pub struct UsmapReader<'parent_reader, 'asset, R: ArchiveReader<PackageIndex>> {
@@ -29,6 +29,9 @@ pub struct UsmapReader<'parent_reader, 'asset, R: ArchiveReader<PackageIndex>> {
     name_map: &'asset [String],
     /// Custom versions
     custom_versions: &'asset [CustomVersion],
+    /// Usmap version
+    #[allow(dead_code)]
+    usmap_version: EUsmapVersion,
 }
 
 impl<'parent_reader, 'asset, R: ArchiveReader<PackageIndex>>
@@ -39,17 +42,23 @@ impl<'parent_reader, 'asset, R: ArchiveReader<PackageIndex>>
         parent_reader: &'parent_reader mut R,
         name_map: &'asset [String],
         custom_versions: &'asset [CustomVersion],
+        usmap_version: EUsmapVersion,
     ) -> Self {
         UsmapReader {
             parent_reader,
             name_map,
             custom_versions,
+            usmap_version,
         }
     }
 
     /// Read a name from this archive
     pub fn read_name(&mut self) -> Result<String, Error> {
         let index = self.read_i32::<LE>()?;
+        if index == -1 {
+            // -1 indicates "no name" (used for things like super structs that don't exist)
+            return Ok(String::new());
+        }
         if index < 0 {
             return Err(UsmapError::name_map_index_out_of_range(self.name_map.len(), index).into());
         }

@@ -39,8 +39,12 @@ pub enum EUsmapVersion {
     /// Adds package versioning to aid with compatibililty
     PackageVersioning,
 
-    /// Latest
-    Latest,
+    /// Adds support for 16-bit wide name-lengths (ushort/uint16)
+    LongFName,
+
+    /// Adds support for enums with more than 255 values
+    LargeEnums,
+
     /// Latest plus one
     LatestPlusOne,
 }
@@ -161,7 +165,7 @@ pub struct Usmap {
 }
 
 impl Usmap {
-    const ASSET_MAGIC: u16 = u16::from_be_bytes([0xc4, 0x30]);
+    const ASSET_MAGIC: u16 = 0x30C4;  // Magic bytes 0xC4 0x30 read as little-endian
 
     /// Gets usmap property for a given property name + ancestry
     pub fn get_property(
@@ -248,21 +252,32 @@ impl Usmap {
             ));
         }
 
-        let usmap_version = EUsmapVersion::try_from(reader.read_u8()?)?;
+        let usmap_version_byte = reader.read_u8()?;
+        let usmap_version = EUsmapVersion::try_from(usmap_version_byte)?;
+        self.version = usmap_version;
 
-        let mut has_versioning = usmap_version >= EUsmapVersion::PackageVersioning;
-        if has_versioning {
-            has_versioning = reader.read_bool()?;
+        // Handle UE4SS format (version 0) vs official format
+        let is_ue4ss_format = usmap_version_byte == 0;
+        
+        if is_ue4ss_format {
+            // UE4SS format: magic (2) + version (1) + compression (1) + compressed_size (4) + decompressed_size (4) + data
+            self.compression_method = EUsmapCompressionMethod::try_from(reader.read_u8()?)?;
+        } else {
+            // Official format with versioning
+            let mut has_versioning = usmap_version >= EUsmapVersion::PackageVersioning;
+            if has_versioning {
+                has_versioning = reader.read_bool()?;
+            }
+
+            if has_versioning {
+                self.object_version = ObjectVersion::try_from(reader.read_i32::<LE>()?)?;
+                self.object_version_ue5 = ObjectVersionUE5::try_from(reader.read_i32::<LE>()?)?;
+                self.custom_versions = reader.read_array(CustomVersion::read)?;
+                self.net_cl = reader.read_u32::<LE>()?;
+            }
+
+            self.compression_method = EUsmapCompressionMethod::try_from(reader.read_u8()?)?;
         }
-
-        if has_versioning {
-            self.object_version = ObjectVersion::try_from(reader.read_i32::<LE>()?)?;
-            self.object_version_ue5 = ObjectVersionUE5::try_from(reader.read_i32::<LE>()?)?;
-            self.custom_versions = reader.read_array(CustomVersion::read)?;
-            self.net_cl = reader.read_u32::<LE>()?;
-        }
-
-        self.compression_method = EUsmapCompressionMethod::try_from(reader.read_u8()?)?;
 
         let compressed_size = reader.read_u32::<LE>()?;
         let decompressed_size = reader.read_u32::<LE>()?;
@@ -332,8 +347,13 @@ impl Usmap {
         );
 
         self.name_map = reader.read_array(|reader| {
-            let name_length = reader.read_u8()?;
-            let mut buf = vec![0u8; name_length as usize - 1];
+            // UE4SS always uses u8 for name lengths (version 0), while official format uses u16 for LongFName and above
+            let name_length = if is_ue4ss_format || usmap_version < EUsmapVersion::LongFName {
+                reader.read_u8()? as usize
+            } else {
+                reader.read_u16::<LE>()? as usize
+            };
+            let mut buf = vec![0u8; name_length];
             reader.read_exact(&mut buf)?;
             Ok(String::from_utf8(buf)?)
         })?;
@@ -341,13 +361,18 @@ impl Usmap {
         let enum_len = reader.read_u32::<LE>()?;
         self.enum_map = IndexedMap::with_capacity(enum_len as usize);
 
-        let mut reader = UsmapReader::new(&mut reader, &self.name_map, &self.custom_versions);
+        let mut reader = UsmapReader::new(&mut reader, &self.name_map, &self.custom_versions, usmap_version);
 
         for _ in 0..enum_len {
             let enum_name = reader.read_name()?;
 
-            let enum_names_len = reader.read_u8()?;
-            let mut enum_names = Vec::with_capacity(enum_names_len as usize);
+            // UE4SS always uses u8 for enum counts (version 0), while official format uses u16 for LargeEnums and above
+            let enum_names_len = if is_ue4ss_format || usmap_version < EUsmapVersion::LargeEnums {
+                reader.read_u8()? as usize
+            } else {
+                reader.read_u16::<LE>()? as usize
+            };
+            let mut enum_names = Vec::with_capacity(enum_names_len);
 
             for _ in 0..enum_names_len {
                 enum_names.push(reader.read_name()?);
@@ -364,9 +389,8 @@ impl Usmap {
             self.schemas.insert(schema.name.clone(), schema);
         }
 
-        // read extensions
-
-        if reader.data_length()? > reader.position() {
+        // read extensions (only for official format, not UE4SS)
+        if !is_ue4ss_format && reader.data_length()? > reader.position() {
             self.extension_version = UsmapExtensionVersion::from_bits(reader.read_u32::<LE>()?)
                 .ok_or_else(|| Error::invalid_file("Invalid extension version".to_string()))?;
 
