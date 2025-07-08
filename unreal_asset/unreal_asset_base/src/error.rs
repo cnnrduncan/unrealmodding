@@ -367,6 +367,10 @@ pub enum Error {
     /// A `ZenError` occured
     #[error(transparent)]
     Zen(#[from] ZenError),
+
+    /// Other error
+    #[error("{0}")]
+    Other(Box<str>),
 }
 
 impl Error {
@@ -408,6 +412,11 @@ impl Error {
             .collect::<Vec<_>>()
             .join("/");
         Error::ArchiveTypeMismatch(expected.into_boxed_str(), got)
+    }
+
+    /// Create a generic error
+    pub fn other(msg: String) -> Self {
+        Error::Other(msg.into_boxed_str())
     }
 }
 
