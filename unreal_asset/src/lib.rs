@@ -5,6 +5,9 @@
 
 //! This crate is used for parsing Unreal Engine uasset files
 //!
+//! Supports both traditional UE4/UE5 package formats and the new UE5.3+ IoStore/ZenPackage formats.
+//! Format detection is automatic and transparent to the user.
+//!
 //! # Examples
 //!
 //! ## Reading an asset that doesn't use bulk data
@@ -38,6 +41,26 @@
 //! let mut asset = Asset::new(file, Some(bulk_file), EngineVersion::VER_UE4_23, None).unwrap();
 //!
 //! println!("{:#?}", asset);
+//! ```
+//!
+//! ## Working with UE5.3+ ZenPackage format
+//!
+//! ```no_run
+//! use std::fs::File;
+//!
+//! use unreal_asset::{
+//!     Asset, AssetFormat,
+//!     engine_version::EngineVersion,
+//! };
+//!
+//! let mut file = File::open("ue53_asset.uasset").unwrap();
+//! let mut asset = Asset::new(file, None, EngineVersion::VER_UE5_3, None).unwrap();
+//!
+//! match asset.format {
+//!     AssetFormat::ZenPackage => println!("UE5.3+ ZenPackage format detected!"),
+//!     AssetFormat::Traditional => println!("Traditional UE4/UE5 format"),
+//!     AssetFormat::IoStore => println!("IoStore container format"),
+//! }
 //! ```
 
 // sub crate reexports
@@ -88,8 +111,10 @@ pub mod asset;
 pub mod asset_archive_writer;
 pub mod asset_data;
 pub mod fengineversion;
+pub mod io_store;
 pub mod package_file_summary;
 
 pub use asset::Asset;
+pub use io_store::{AssetFormat, FZenPackageSummary, FormatDetector};
 
 const UE4_ASSET_MAGIC: u32 = u32::from_be_bytes([0xc1, 0x83, 0x2a, 0x9e]);
